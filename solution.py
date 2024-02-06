@@ -142,28 +142,22 @@ def unprocess(img, cut_at, vars):
 def find_dag_path(img):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # build the terrain
+    timg = torch.from_numpy(img).to(device)
     terrain = torch.cat(
-        (torch.zeros(1, img.shape[1]), torch.from_numpy(img)), dim=0
+        (torch.zeros(1, img.shape[1]), timg, torch.zeros(1, img.shape[1])), dim=0
     ).to(device)
+    terrain_down = terrain.clone()
+    terrain_up = terrain.clone()
     maxpool = torch.nn.MaxPool1d(3, stride=1, padding=1)
-    for row_ind in range(1, terrain.shape[0]):
-        terrain[row_ind] = maxpool(terrain[row_ind - 1 : row_ind])[0] + terrain[row_ind]
-    terrain = terrain[1:]
-    # now find the path
-    path = [torch.argmax(terrain[-1])]
-    for row_ind in range(terrain.shape[0] - 2, -1, -1):
-        last = path[-1]
-        if last == 0:
-            path.append(torch.argmax(terrain[row_ind, :2]))
-        elif last == terrain.shape[1] - 1:
-            path.append(torch.argmax(terrain[row_ind, -2:]) + terrain.shape[1] - 2)
-        else:
-            path.append(torch.argmax(terrain[row_ind, last - 1 : last + 2]) + last - 1)
-    path = path[::-1]
-    # build the path image
-    path_img = torch.zeros_like(terrain)
-    path_img[range(len(path)), path] = 1
-    return path_img
+    for row_ind in range(1, terrain.shape[0]-1):  # forward
+        # now the terrain has the max value that can be achieved from top to the current row
+        terrain_down[row_ind] = maxpool(terrain_down[row_ind - 1 : row_ind])[0] + terrain_down[row_ind]
+    for row_ind in range(terrain.shape[0] - 2, 0, -1):  # backward
+        # now the terrain has the max value that can be achieved from bottom to the current row
+        terrain_up[row_ind] = maxpool(terrain_up[row_ind + 1 : row_ind + 2])[0] + terrain_up[row_ind]  
+    terrain = (terrain_up + terrain_down)[1:-1] - timg  # remove the padding and the original image$
+    path_img = terrain == terrain.max(dim=1, keepdims=True)[0]  # the path is the max value
+    return path_img, terrain
 
 
 def main(
@@ -176,22 +170,26 @@ def main(
 
     # read image
     # frames = read_well(data_path, partition, i, return_first_frame_only=True)
-    frames = np.load("frames.npy")  # locally
-
-    raw_img = frames[0]
-    # visualize
-    if vis:
-        showimg(raw_img, name="rawimg")
-    img, cut_at, vars = process(raw_img, vis=True)
-    if vis:
-        showimg(img, name="processed")
-
-    x = find_dag_path(img)
-    showimg(x, name="path")
-    x2 = unprocess(x, cut_at, vars)
-    showimg(raw_img + (2 * raw_img.max()) * x2, name="pred")
-
-
+    frames = np.array(np.load("frames.npy"))  # locally
+    # frames is [angles, depth, time]
+    preds, terrains = np.zeros_like(frames, dtype=float), np.zeros_like(frames, dtype=float)
+    for find, raw_img in tqdm.tqdm(enumerate(frames)):
+        # visualize
+        if vis: showimg(raw_img, name="rawimg")
+        img, cut_at, vars = process(raw_img, vis=True)
+        if vis: showimg(img, name="processed")
+        x, terrain = find_dag_path(img)
+        terrain = terrain / terrain.max(dim=1, keepdims=True)[0]
+        if vis: showimg(x, name="path")
+        x2 = unprocess(x, cut_at, vars)
+        terrain2 = unprocess(terrain.cpu().numpy(), cut_at, vars)
+        if vis: showimg(raw_img + (2 * raw_img.max()) * x2, name="pred")
+        preds[find] = x2
+        terrains[find] = terrain2
+    savee = lambda x, name: plt.imsave(f"out/{name}.png", x, cmap="gray")
+    breakpoint()
+    np.save('terrains.npy', terrains)
+    
 if __name__ == "__main__":
     from fire import Fire
 
