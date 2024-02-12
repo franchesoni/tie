@@ -110,6 +110,7 @@ def showimg(img, save=True, name=""):
 
 
 def process(raw_img, vis=True, inv_width=40, var_thresh=1e-6):
+    if vis: showimg(raw_img, name='Start_raw')
     # remove empty rows
     vars = np.var(raw_img, axis=1) > var_thresh  # one per row
     raw_img = raw_img[vars]
@@ -122,11 +123,7 @@ def process(raw_img, vis=True, inv_width=40, var_thresh=1e-6):
     corrs = (
         (raw_img - raw_img.min()) / (raw_img - raw_img.min()).sum(axis=1, keepdims=True)
     ) @ norm_profile
-    hist, bin_edges = np.histogram(corrs, bins=100)
-    for i in range(len(hist) - 1, -1, -1):  # not very efficient
-        if hist[i] == 0:
-            break
-    corr_thresh = bin_edges[i - 1]
+    corr_thresh = np.percentile(corrs, 5)
     bad_row_indices = corrs < corr_thresh
     raw_img[bad_row_indices] = raw_img.mean(axis=0)
     if vis:
@@ -215,7 +212,6 @@ def avg_displacement_error(paths, ties):
 def main(
     data_path="/HomeToo/data/curated/TIE",
     partition="train",
-    i=0,
     no_vis=False,
     skip_prediction=False,
 ):
@@ -289,3 +285,12 @@ if __name__ == "__main__":
     from fire import Fire
 
     Fire(main)
+    # partition = 'train'
+    # i = 5
+    # tutto = np.load(
+    #     f"everything_{partition}_{i}.npy", allow_pickle=True
+    # ).item()
+    # frames = tutto['frames']
+    # img, cut_at, vars = process(frames[0], vis=True)
+    # uimg = unprocess(img, cut_at, vars)
+    # breakpoint()
