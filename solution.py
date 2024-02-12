@@ -126,7 +126,7 @@ def process(raw_img, vis=True, inv_width=40, var_thresh=1e-6):
         # find max corr
         maxcorr = 0
         row = row / np.sum(row)
-        for shift in range(-5, 6):
+        for shift in range(-15, 16):
             newrow = np.roll(row, shift) # normalized shifted row
             corr = newrow @ norm_profile
             if corr > maxcorr:
@@ -174,8 +174,8 @@ def process(raw_img, vis=True, inv_width=40, var_thresh=1e-6):
     if vis:
         showimg(img, name="S5_gauss")
 
-    # clip outliers
-    img = np.clip(img, img.min(), np.percentile(img, 97))
+    # attenuate extreme values 
+    img = np.sqrt(img)
     return img, cut_at, vars
 
 
@@ -286,7 +286,7 @@ def main(
         )
         showimg(everything["uimgs"][0], name=f"{partition}_{i}_" + "uimgs0")
         showimg(everything["uimgs"][17], name=f"{partition}_{i}_" + "uimgs17")
-        showimg(everything["frames"][0], name=f"{i}_" + "frame0")
+        showimg(everything["frames"][0], name=f"{partition}_{i}_" + "frame0")
         showimg(everything["frames"][17], name=f"{partition}_{i}_" + "frame17")
         showimg(everything["trr"][0], name=f"{partition}_{i}_" + "trr0")
         showimg(everything["trr"][17], name=f"{partition}_{i}_" + "trr17")

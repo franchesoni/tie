@@ -76,3 +76,80 @@ missing preds = 0
 average displacement = 9.6907641493034
 missing preds = 0
 
+
+# clipping large values
+-------------------- 0 --------------------                
+average displacement = 6.825206158539492, 114)!   
+missing preds = 9
+-------------------- 1 --------------------
+average displacement = nan
+missing preds = 0
+-------------------- 2 --------------------
+average displacement = 5.464303854619335, 631)!   
+missing preds = 0
+-------------------- 3 --------------------
+average displacement = 18.759477109931204 5918)!  
+missing preds = 0
+-------------------- 4 --------------------
+average displacement = 4.863225050452445, 903)!   
+missing preds = 86
+-------------------- 5 --------------------
+average displacement = 5.867070827869362, 9690)!  
+missing preds = 0
+-------------------- 6 --------------------
+average displacement = 10.141654456502843 1165)!  
+missing preds = 0
+
+# sqrt of img
+-------------------- 0 --------------------                
+average displacement = 6.698984698984699, 114)!   
+missing preds = 19
+-------------------- 1 --------------------
+/HomeSweetHome/FMarchesoni/tie/venv_tie/lib/python3.8/site-packages/numpy/core/fromnumeric.py:3464: RuntimeWarning: Mean of empty slice.
+  return _methods._mean(a, axis=axis, dtype=dtype,
+/HomeSweetHome/FMarchesoni/tie/venv_tie/lib/python3.8/site-packages/numpy/core/_methods.py:192: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+average displacement = nan
+missing preds = 0
+-------------------- 2 --------------------
+average displacement = 5.540154636266155, 631)!   
+missing preds = 0
+-------------------- 3 --------------------
+average displacement = 18.879449635307072 5918)!  
+missing preds = 241
+-------------------- 4 --------------------
+average displacement = 4.279994792005729, 903)!   
+missing preds = 0
+-------------------- 5 --------------------
+average displacement = 5.867070827869362, 9690)!  
+missing preds = 0
+-------------------- 6 --------------------
+average displacement = 8.736185958725507, 1165)!  
+missing preds = 0
+
+# increase corr roll tolerance
+-------------------- 0 --------------------                
+average displacement = 6.7514657514657515 114)!   
+missing preds = 19
+-------------------- 1 --------------------
+/HomeSweetHome/FMarchesoni/tie/venv_tie/lib/python3.8/site-packages/numpy/core/fromnumeric.py:3464: RuntimeWarning: Mean of empty slice.
+  return _methods._mean(a, axis=axis, dtype=dtype,
+/HomeSweetHome/FMarchesoni/tie/venv_tie/lib/python3.8/site-packages/numpy/core/_methods.py:192: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+average displacement = nan
+missing preds = 0
+-------------------- 2 --------------------
+average displacement = 5.5119363395225465 631)!   
+missing preds = 0
+-------------------- 3 --------------------
+average displacement = 11.213146389594531 5918)!  
+missing preds = 0
+-------------------- 4 --------------------
+average displacement = 4.204413775144848, 903)!   
+missing preds = 0
+-------------------- 5 --------------------
+average displacement = 5.867070827869362, 9690)!  
+missing preds = 0
+-------------------- 6 --------------------
+average displacement = 9.044751285171485, 1165)!  
+missing preds = 0
