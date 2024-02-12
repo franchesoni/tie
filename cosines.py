@@ -1,8 +1,9 @@
+import sys
 import time
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from numba import jit
+from numba import jit, njit, prange
 import torch
 
 
@@ -35,10 +36,11 @@ def compute_energy(img, ball_size=3):
     assert ball_size % 2 == 1, "Ball size must be odd"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # build the terrain
-    timg = torch.from_numpy(img).to(device)
+    timg = torch.from_numpy(img)
     terrain = torch.cat(
         (torch.zeros(1, img.shape[1]), timg, torch.zeros(1, img.shape[1])), dim=0
     ).to(device)
+    timg = timg.to(device)
     terrain_down = terrain.clone()
     terrain_up = terrain.clone()
     maxpool = torch.nn.MaxPool1d(ball_size, stride=1, padding=ball_size // 2)
@@ -56,16 +58,16 @@ def compute_energy(img, ball_size=3):
         1:-1
     ] - timg  # remove the padding and the original image$
     terrain = terrain / terrain.shape[1]  # mean node on path
-    return terrain.numpy()
+    return terrain.cpu().numpy()
 
 
-if __name__ == "__main__":
+def savee(img, name):
+    plt.imsave(f"out/{name}.png", img, cmap="gray")
+
+
+def inference(trr):
     st = time.time()
-    trr = np.load("uimgs.npy")
     trr = trr / trr.max()
-
-    def savee(img, name):
-        plt.imsave(f"out/{name}.png", img, cmap="gray")
 
     A, R, T = trr.shape
 
@@ -75,6 +77,19 @@ if __name__ == "__main__":
         depth_terrains.append(depth_terrain)
     dtrr = np.array(depth_terrains)
 
+    ctrr = cosine_terrain(trr, A, R, T)
+
+    trr = dtrr * ctrr
+    final_trr = []
+    for a in tqdm(range(A)):
+        final_trr.append(compute_energy(trr[a]))
+    final_trr = np.array(final_trr)
+    final_trr = final_trr / final_trr.max()
+    paths = final_trr == final_trr.max(axis=2, keepdims=True)
+    print(f"Inference took {time.time() - st:.2e} s")
+    return final_trr, paths
+
+def cosine_terrain(trr, A, R, T):
     cosine_terrains = []
     tindices = np.arange(A)
     times = tindices / A
@@ -82,21 +97,27 @@ if __name__ == "__main__":
     minns = np.arange(T) / T
     maxxs = np.arange(T) / T
 
-    for r in tqdm(range(R)):
+    cosine_terrains = numba_loop(trr, A, R, T, tindices, times, phases, minns, maxxs)
+    ctrr = cosine_terrains.transpose(1, 0, 2)
+    return ctrr
+
+@njit(parallel=True)
+def numba_loop(trr, A, R, T, tindices, times, phases, minns, maxxs):
+    cosine_terrains = np.zeros((R, A, T))
+    for r in prange(R):
+        if r % (R // 10) == 0:
+            print('.')
         # we will create a new energy map
         img = trr[:, r]
         terrain = compute_cosine_terrain(
             A, T, tindices, times, phases, minns, maxxs, img
         )
-        cosine_terrains.append(terrain)
-    ctrr = np.array(cosine_terrains).transpose(1, 0, 2)
+        cosine_terrains[r] = terrain
+    return cosine_terrains
 
-    trr = dtrr * ctrr 
-    final_trr = []
-    for a in tqdm(range(A)):
-        final_trr.append(compute_energy(trr[a]))
-    final_trr = np.array(final_trr)
-    final_trr = final_trr / final_trr.max()
-    paths = final_trr == final_trr.max(axis=2, keepdims=True)
-    np.save('final_trr.npy', final_trr)
-    np.save('paths.npy', paths)
+
+if __name__ == "__main__":
+    trr = np.load("uimgs.npy")
+    final_trr, paths = inference(trr)
+    np.save("final_trr.npy", final_trr)
+    np.save("paths.npy", paths)
