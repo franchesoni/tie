@@ -31,7 +31,7 @@ def compute_cosine_terrain(A, T, tindices, times, phases, minns, maxxs, img):
     return terrain
 
 
-def compute_energy(img, ball_size=3):
+def compute_energy(img, ball_size=5):
     """Compute energy, assume second dim is time"""
     assert ball_size % 2 == 1, "Ball size must be odd"
     device = "cuda" if torch.cuda.is_available() else "cpu"

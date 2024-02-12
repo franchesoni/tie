@@ -115,11 +115,24 @@ def process(raw_img, vis=True, inv_width=40, var_thresh=1e-6):
     vars = np.var(raw_img, axis=1) > var_thresh  # one per row
     raw_img = raw_img[vars]
 
+    raw_img = (raw_img - raw_img.min()) / (raw_img.max() - raw_img.min())  # take to [0,1]
     # fill rows that aren't close to the mean with the mean
     profile = raw_img.sum(axis=0)  # get profile
     if vis:
         showimg(profile, name="S0_profile")
     norm_profile = (profile - profile.min()) / (profile - profile.min()).sum()
+    # align rows to profile
+    for r, row in enumerate(raw_img):
+        # find max corr
+        maxcorr = 0
+        row = row / np.sum(row)
+        for shift in range(-5, 6):
+            newrow = np.roll(row, shift) # normalized shifted row
+            corr = newrow @ norm_profile
+            if corr > maxcorr:
+                maxcorr = corr
+                bestshift = shift
+        raw_img[r] = np.roll(row, bestshift)
     corrs = (
         (raw_img - raw_img.min()) / (raw_img - raw_img.min()).sum(axis=1, keepdims=True)
     ) @ norm_profile
@@ -160,6 +173,9 @@ def process(raw_img, vis=True, inv_width=40, var_thresh=1e-6):
         img = scipy.ndimage.gaussian_filter1d(img, axis=1, sigma=sigma)
     if vis:
         showimg(img, name="S5_gauss")
+
+    # clip outliers
+    img = np.clip(img, img.min(), np.percentile(img, 97))
     return img, cut_at, vars
 
 
@@ -204,6 +220,7 @@ def avg_displacement_error(paths, ties):
             target = np.argmax(line) + offset
             displacement_error = np.abs(pred - target)
             aerrors.append(displacement_error)
+        # print(f"a = {a}, error = {np.mean(aerrors)}")
         errors += aerrors
 
     return np.mean(errors), pred_missing_rows, target_missing_rows
@@ -222,7 +239,8 @@ def main(
     data = data.loc[data["Partition"] == partition]
     if not skip_prediction:
         # make predictions
-        for i in range(len(data)):
+        # for i in range(len(data)):
+        for i in [0, 1, 2, 4, 6, 3, 5]:  # slow results later
             print(f"working {i+1}/{len(data)}...")
             print("reading..." + " " * 40, end="\r")
             frames, casings, ties = read_well(
@@ -266,16 +284,16 @@ def main(
         error, missing_preds, missing_targets = avg_displacement_error(
             everything["paths"], everything["ties"]
         )
-        showimg(everything["uimgs"][0], name=f"{i}_" + "uimgs0")
-        showimg(everything["uimgs"][17], name=f"{i}_" + "uimgs17")
+        showimg(everything["uimgs"][0], name=f"{partition}_{i}_" + "uimgs0")
+        showimg(everything["uimgs"][17], name=f"{partition}_{i}_" + "uimgs17")
         showimg(everything["frames"][0], name=f"{i}_" + "frame0")
-        showimg(everything["frames"][17], name=f"{i}_" + "frame17")
-        showimg(everything["trr"][0], name=f"{i}_" + "trr0")
-        showimg(everything["trr"][17], name=f"{i}_" + "trr17")
-        showimg(everything["ties"][0], name=f"{i}_" + "ties0")
-        showimg(everything["ties"][17], name=f"{i}_" + "ties17")
-        showimg(everything["paths"][0], name=f"{i}_" + "paths0")
-        showimg(everything["paths"][17], name=f"{i}_" + "paths17")
+        showimg(everything["frames"][17], name=f"{partition}_{i}_" + "frame17")
+        showimg(everything["trr"][0], name=f"{partition}_{i}_" + "trr0")
+        showimg(everything["trr"][17], name=f"{partition}_{i}_" + "trr17")
+        showimg(everything["ties"][0], name=f"{partition}_{i}_" + "ties0")
+        showimg(everything["ties"][17], name=f"{partition}_{i}_" + "ties17")
+        showimg(everything["paths"][0], name=f"{partition}_{i}_" + "paths0")
+        showimg(everything["paths"][17], name=f"{partition}_{i}_" + "paths17")
 
         print("average displacement =", error)
         print("missing preds =", missing_preds)
@@ -286,11 +304,22 @@ if __name__ == "__main__":
 
     Fire(main)
     # partition = 'train'
-    # i = 5
+    # i = 3
     # tutto = np.load(
     #     f"everything_{partition}_{i}.npy", allow_pickle=True
     # ).item()
+    # error, missing_preds, missing_targets = avg_displacement_error(
+    #     tutto["paths"], tutto["ties"]
+    # )
+    # critical_frame = 0
+    # breakpoint()
     # frames = tutto['frames']
-    # img, cut_at, vars = process(frames[0], vis=True)
+    # img, cut_at, vars = process(frames[critical_frame], vis=True)
     # uimg = unprocess(img, cut_at, vars)
+    # showimg(frames[critical_frame], name='critical_frame')
+    # showimg(uimg, name='critical_uimg')
+    # showimg(tutto['ties'][critical_frame], name='critical_ties')
+    # showimg(tutto['trr'][critical_frame], name='critical_trr')
+    # showimg(tutto['paths'][critical_frame], name='critical_paths')
+    # showimg(uimg / uimg.max() + tutto['paths'][critical_frame], name='critical_paths2')
     # breakpoint()

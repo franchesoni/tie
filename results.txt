@@ -1,0 +1,78 @@
+# with pct removal
+
+-------------------- 0 --------------------      
+average displacement = 19.14886314886315, 114)!   
+missing preds = 0
+-------------------- 1 --------------------
+/HomeSweetHome/FMarchesoni/tie/venv_tie/lib/python3.8/site-packages/numpy/core/fromnumeric.py:3464: RuntimeWarning: Mean of empty slice.
+  return _methods._mean(a, axis=axis, dtype=dtype,
+/HomeSweetHome/FMarchesoni/tie/venv_tie/lib/python3.8/site-packages/numpy/core/_methods.py:192: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+average displacement = nan
+missing preds = 0
+-------------------- 2 --------------------
+average displacement = 5.301540719002201, 631)!   
+missing preds = 0
+-------------------- 3 --------------------
+average displacement = 22.970017771284656 5918)!  
+missing preds = 0
+-------------------- 4 --------------------
+average displacement = 66.25831651585183, 903)!   
+missing preds = 0
+-------------------- 5 --------------------
+average displacement = 5.745443565933236, 9690)!  
+missing preds = 0
+-------------------- 6 --------------------
+average displacement = 9.750813321081779, 1165)!  
+missing preds = 0
+
+# add corr roll
+-------------------- 0 --------------------      
+average displacement = 4.2021068687735355 114)!   
+missing preds = 0
+-------------------- 1 --------------------
+/HomeSweetHome/FMarchesoni/tie/venv_tie/lib/python3.8/site-packages/numpy/core/fromnumeric.py:3464: RuntimeWarning: Mean of empty slice.
+  return _methods._mean(a, axis=axis, dtype=dtype,
+/HomeSweetHome/FMarchesoni/tie/venv_tie/lib/python3.8/site-packages/numpy/core/_methods.py:192: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+average displacement = nan
+missing preds = 0
+-------------------- 2 --------------------
+average displacement = 5.292680173824708, 631)!   
+missing preds = 0
+-------------------- 3 --------------------
+average displacement = 18.60232662094831, 5918)!  
+missing preds = 0
+-------------------- 4 --------------------
+average displacement = 4.105722283705488, 903)!   
+missing preds = 0
+-------------------- 5 --------------------
+average displacement = 5.651535289607748, 9690)!  
+missing preds = 0
+-------------------- 6 --------------------
+average displacement = 9.690764149303435, 1165)!  
+missing preds = 0
+
+# increase derivative cutoff limit
+-------------------- 0 --------------------                
+average displacement = 4.469707803041136
+missing preds = 0
+-------------------- 1 --------------------
+average displacement = nan
+missing preds = 0
+-------------------- 2 --------------------
+average displacement = 5.534398103730459
+missing preds = 0
+-------------------- 3 --------------------
+average displacement = 18.60232662094831
+missing preds = 0
+-------------------- 4 --------------------
+average displacement = 4.296595273745199
+missing preds = 0
+-------------------- 5 --------------------
+average displacement = 5.651535289607748
+missing preds = 0
+-------------------- 6 --------------------
+average displacement = 9.6907641493034
+missing preds = 0
+
