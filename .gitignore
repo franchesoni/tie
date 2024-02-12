@@ -1,3 +1,5 @@
 
 out/
-frames.npy
+*.npy
+*.png
+__pycache__/
