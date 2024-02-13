@@ -239,8 +239,7 @@ def main(
     data = data.loc[data["Partition"] == partition]
     if not skip_prediction:
         # make predictions
-        # for i in range(len(data)):
-        for i in [0, 1, 2, 4, 6, 3, 5]:  # slow results later
+        for i in range(len(data)):
             print(f"working {i+1}/{len(data)}...")
             print("reading..." + " " * 40, end="\r")
             frames, casings, ties = read_well(
