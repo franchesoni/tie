@@ -69,7 +69,7 @@ def inference(trr):
     st = time.time()
     trr = trr / trr.max()
 
-    A, R, T = trr.shape
+    A, R, T = trr.shape  # angle, row, time
 
     depth_terrains = []
     for a in tqdm(range(A)):
