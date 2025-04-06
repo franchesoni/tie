@@ -3,3 +3,6 @@ out/
 *.npy
 *.png
 __pycache__/
+data/
+runs/
+tmp/

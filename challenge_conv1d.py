@@ -227,7 +227,7 @@ def main_train(tag="baseline", batch_size=32, epochs=16, n_layers=4, num_workers
             loss.backward()
             optim.step()
             print(
-                f"epoch {epoch} step {batch_idx} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}",
+                f"epoch {epoch} step {batch_idx+1} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}",
                 end="\r",
             )
             writer.add_scalar(
@@ -256,7 +256,7 @@ def main_train(tag="baseline", batch_size=32, epochs=16, n_layers=4, num_workers
                 global_step=batch_idx * batch_size + epoch * len(dl),
             )
         print(
-            f"epoch {epoch} step {batch_idx} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}"
+            f"epoch {epoch} step {batch_idx+1} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}"
         )
 
 
@@ -339,7 +339,7 @@ def main_cv(tag, vis_val=False):
                 loss.backward()
                 optim.step()
                 print(
-                    f"epoch {epoch} step {batch_idx} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}",
+                    f"epoch {epoch} step {batch_idx+1} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}",
                     end="\r",
                 )
                 writer.add_scalar(
@@ -368,7 +368,7 @@ def main_cv(tag, vis_val=False):
                     global_step=batch_idx * batch_size + epoch * len(dl),
                 )
             print(
-                f"epoch {epoch} step {batch_idx} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}"
+                f"epoch {epoch} step {batch_idx+1} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}"
             )
 
 
@@ -384,4 +384,5 @@ def visualize(well, section, patch, split="labeled"):
 if __name__ == "__main__":
     from fire import Fire
 
-    Fire(main_cv)
+    Fire(main_train)
+    # Fire(main_cv)
