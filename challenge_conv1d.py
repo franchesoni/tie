@@ -203,7 +203,64 @@ def get_loss(image_batch, label_batch, model, image_paths, vis_val):
     return loss, loss_casing, loss_tie, mae_casing, mae_tie
 
 
-def main(tag, vis_val=False):
+def main_train(tag="baseline", batch_size=32, epochs=16, n_layers=4, num_workers=16):
+    device = torch.device("cuda:0")
+    all_wells = list(range(1, 7))
+    writer = SummaryWriter(comment=tag)
+    wells = [str(w) for w in all_wells]
+    train_ds = TIEDataset(wells=wells)
+    dl = DataLoader(
+        train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers
+    )
+    model = Conv1DNet(n_layers=n_layers).to(device)
+    optim = torch.optim.AdamW(model.parameters(), weight_decay=1)
+    for epoch in range(epochs):
+        for batch_idx, batch in enumerate(dl):
+            image_paths, image_batch, label_batch = batch
+            image_batch, label_batch = image_batch.to(
+                device, non_blocking=True
+            ), label_batch.to(device, non_blocking=True)
+            loss, loss_casing, loss_tie, mae_casing, mae_tie = get_loss(
+                image_batch, label_batch, model, image_paths, vis_val=False
+            )
+            optim.zero_grad()
+            loss.backward()
+            optim.step()
+            print(
+                f"epoch {epoch} step {batch_idx} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}",
+                end="\r",
+            )
+            writer.add_scalar(
+                "train/total",
+                loss.item(),
+                global_step=batch_idx * batch_size + epoch * len(dl),
+            )
+            writer.add_scalar(
+                "train/casing",
+                loss_casing.item(),
+                global_step=batch_idx * batch_size + epoch * len(dl),
+            )
+            writer.add_scalar(
+                "train/tie",
+                loss_tie.item(),
+                global_step=batch_idx * batch_size + epoch * len(dl),
+            )
+            writer.add_scalar(
+                "train/mae_casing",
+                mae_casing.item(),
+                global_step=batch_idx * batch_size + epoch * len(dl),
+            )
+            writer.add_scalar(
+                "train/mae_tie",
+                mae_tie.item(),
+                global_step=batch_idx * batch_size + epoch * len(dl),
+            )
+        print(
+            f"epoch {epoch} step {batch_idx} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}"
+        )
+
+
+def main_cv(tag, vis_val=False):
     # classes are 0=background, 1=tie, 2=casing
     device = torch.device("cuda:0")
     allowed_wells = [
@@ -324,8 +381,7 @@ def visualize(well, section, patch, split="labeled"):
     plt.imsave("tmp/vis.png", np_pct_minmax_norm(image))
 
 
-# main()
-from fire import Fire
+if __name__ == "__main__":
+    from fire import Fire
 
-# Fire(visualize)
-Fire(main)
+    Fire(main_cv)
