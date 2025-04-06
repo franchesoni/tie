@@ -15,17 +15,19 @@ class TIEDataset(Dataset):
         wells="all",
         sections="all",
         patches="all",
+        split="labeled",
     ):
-        train_path = Path(data_path) / "labeled"
-        image_paths = sorted(list((train_path / "images").glob("*.npy")))
+        split_path = Path(data_path) / split
+        image_paths = sorted(list((split_path / "images").glob("*.npy")))
         print("loading y_train...")
-        y_train_cache = Path("tmp") / "y_train.pkl"
-        y_train_cache.parent.mkdir(exist_ok=True, parents=True)
-        if y_train_cache.exists():
-            y_train = pd.read_pickle(y_train_cache)
-        else:
-            y_train = pd.read_csv(train_path / "Y_train_T9NrBYo.csv", index_col=0)
-            y_train.to_pickle(y_train_cache)
+        if split == "labeled":
+            y_train_cache = Path("tmp") / "y_train.pkl"
+            y_train_cache.parent.mkdir(exist_ok=True, parents=True)
+            if y_train_cache.exists():
+                y_train = pd.read_pickle(y_train_cache)
+            else:
+                y_train = pd.read_csv(split_path / "Y_train_T9NrBYo.csv", index_col=0)
+                y_train.to_pickle(y_train_cache)
 
         self.samples = []
         print("loading samples...")
@@ -37,19 +39,23 @@ class TIEDataset(Dataset):
                 and ((patches == "all") or (patch in patches))
             ):
                 image = np.load(image_path)
-                label = np.array(y_train.loc[image_path.stem])[: image.size].reshape(
-                    160, -1
-                )
+                if split == "labeled":
+                    label = np.array(y_train.loc[image_path.stem])[
+                        : image.size
+                    ].reshape(160, -1)
+                else:
+                    label = -1
                 if image.shape != (160, 272):
                     orig_w = image.shape[1]
                     image = np.concatenate(
                         (image, np.zeros((160, 272 - orig_w), dtype=image.dtype)),
                         axis=1,
                     )
-                    label = np.concatenate(
-                        (label, np.zeros((160, 272 - orig_w), dtype=label.dtype)),
-                        axis=1,
-                    )
+                    if split == "labeled":
+                        label = np.concatenate(
+                            (label, np.zeros((160, 272 - orig_w), dtype=label.dtype)),
+                            axis=1,
+                        )
                 self.samples.append((image_path.stem, image, label))
 
     def __len__(self):
@@ -227,7 +233,7 @@ def main_train(tag="baseline", batch_size=32, epochs=16, n_layers=4, num_workers
             loss.backward()
             optim.step()
             print(
-                f"epoch {epoch} step {batch_idx+1} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}",
+                f"epoch {epoch} step {batch_idx+1} / {len(dl)}, casing={loss_casing:.4f}, tie={loss_tie:.4f}, loss={loss:.4f}",
                 end="\r",
             )
             writer.add_scalar(
@@ -256,10 +262,10 @@ def main_train(tag="baseline", batch_size=32, epochs=16, n_layers=4, num_workers
                 global_step=batch_idx * batch_size + epoch * len(dl),
             )
         print(
-            f"epoch {epoch} step {batch_idx+1} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}"
+            f"epoch {epoch} step {batch_idx+1} / {len(dl)}, casing={loss_casing:.4f}, tie={loss_tie:.4f}, loss={loss:.4f}"
         )
     print("saving model...")
-    torch.save(Path(writer.log_dir) / "final_weights.pth", model.state_dict())
+    torch.save(model.state_dict(), Path(writer.log_dir) / "final_weights.pth")
     print("Training done, model saved, great job!")
 
 
@@ -375,17 +381,94 @@ def main_cv(tag, vis_val=False):
             )
 
 
-def visualize(well, section, patch, split="labeled"):
+def visualize(well, section, patch=None, split="labeled"):
+    def vis_single(well, section, patch, split, outname):
+        image = np.load(
+            f"data/{split}/images/well_{well}_section_{section}_patch_{patch}.npy"
+        )
+        plt.imsave(outname, np_pct_minmax_norm(image))
 
-    image = np.load(
-        f"data/{split}/images/well_{well}_section_{section}_patch_{patch}.npy"
-    )
-    print("image shape =", image.shape)
-    plt.imsave("tmp/vis.png", np_pct_minmax_norm(image))
+    if patch is None:
+        patch = 0
+        while True:
+            try:
+                vis_single(
+                    well, section, patch, split, outname=f"tmp/vis_patch_{patch}.png"
+                )
+                patch += 1
+            except:
+                break
+    else:
+        vis_single(well, section, patch, split, outname=f"tmp/vis.png")
+
+
+def inference(ckpt_path, kernel_size=1, vis=False):
+    model = Conv1DNet(n_layers=4)
+    model.load_state_dict(torch.load(ckpt_path))
+    model.eval()
+    model = model.to("cuda")
+    ds = TIEDataset(split="test")
+    dl = DataLoader(ds, batch_size=32, shuffle=False, num_workers=16)
+    predictions = dict()
+    pred_patches = {"casing": dict(), "tie": dict()}
+    with torch.no_grad():
+        for batch_idx, batch in tqdm.tqdm(enumerate(dl), desc="inference..."):
+            image_paths, image_batch, label_batch = batch
+            image_batch = image_batch.to("cuda", non_blocking=True).float()
+            B = image_batch.shape[0]
+            out = (
+                model(image_batch.reshape(B * 160, 1, 272))
+                .reshape(B, 160, 2, 272)
+                .permute(0, 1, 3, 2)
+            )
+            out = torch.softmax(out, dim=2)  # (B, H, W, 2)
+            # save this one for futher processing
+            for batch_ind in range(len(out)):
+                pred_patches["casing"][image_paths[batch_ind]] = (
+                    out[batch_ind, :, :, 0].cpu().numpy()
+                )
+                pred_patches["tie"][image_paths[batch_ind]] = (
+                    out[batch_ind, :, :, 1].cpu().numpy()
+                )
+            out_label = out == torch.max(out, dim=2, keepdim=True)[0]
+            out_label = torch.clamp(
+                out_label[..., 0] * 2 + out_label[..., 1] * 1, min=0, max=2
+            )  # don't allow 3s
+            out_label = torch.nn.MaxPool2d(
+                kernel_size=(1, kernel_size), stride=1, padding=(0, kernel_size // 2)
+            )(out_label.float().unsqueeze(1)).squeeze(1)
+            # try to follow the expected save format
+            if (image_batch[:, :, 160:] == 0).all():
+                # the image is small
+                out_label = out_label[:, :160, :160]
+            out_label = out_label.cpu().numpy()
+            for ind_in_batch, image_path in enumerate(image_paths):
+                predictions[image_path] = -np.ones(160 * 272)
+                if (image_batch[ind_in_batch, :, 160:] == 0).all():
+                    predictions[image_path][: 160 * 160] = out_label[
+                        ind_in_batch, :160, :160
+                    ].flatten()
+                else:
+                    predictions[image_path] = out_label[ind_in_batch].flatten()
+                if vis:
+                    bigimg = np.concatenate(
+                        (
+                            np_pct_minmax_norm(image_batch[ind_in_batch].cpu().numpy()),
+                            np_pct_minmax_norm(out_label[ind_in_batch]),
+                        ),
+                        axis=1,
+                    )
+                    plt.imsave(f"tmp/test/{image_path}.png", bigimg)
+        print("saving...")
+        np.save("tmp/pred_patches.npy", pred_patches)
+        pd.DataFrame(predictions, dtype="int").T.to_csv(Path("y_test_csv_file.csv"))
+        print("saved! great!")
 
 
 if __name__ == "__main__":
     from fire import Fire
 
-    Fire(main_train)
+    # Fire(main_train)
     # Fire(main_cv)
+    # Fire(visualize)
+    Fire(inference)
