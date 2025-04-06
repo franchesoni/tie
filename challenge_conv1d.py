@@ -258,6 +258,9 @@ def main_train(tag="baseline", batch_size=32, epochs=16, n_layers=4, num_workers
         print(
             f"epoch {epoch} step {batch_idx+1} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}"
         )
+    print("saving model...")
+    torch.save(Path(writer.log_dir) / "final_weights.pth", model.state_dict())
+    print("Training done, model saved, great job!")
 
 
 def main_cv(tag, vis_val=False):
