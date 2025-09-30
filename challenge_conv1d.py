@@ -209,176 +209,144 @@ def get_loss(image_batch, label_batch, model, image_paths, vis_val):
     return loss, loss_casing, loss_tie, mae_casing, mae_tie
 
 
-def main_train(tag="baseline", batch_size=32, epochs=16, n_layers=4, num_workers=16):
-    device = torch.device("cuda:0")
-    all_wells = list(range(1, 7))
-    writer = SummaryWriter(comment=tag)
-    wells = [str(w) for w in all_wells]
-    train_ds = TIEDataset(wells=wells)
-    dl = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers
+def log_metrics(writer, prefix, loss, loss_casing, loss_tie, mae_casing, mae_tie, global_step):
+    """Helper function to log metrics to TensorBoard"""
+    writer.add_scalar(f"{prefix}/total", loss.item(), global_step=global_step)
+    writer.add_scalar(f"{prefix}/casing", loss_casing.item(), global_step=global_step)
+    writer.add_scalar(f"{prefix}/tie", loss_tie.item(), global_step=global_step)
+    writer.add_scalar(f"{prefix}/mae_casing", mae_casing.item(), global_step=global_step)
+    writer.add_scalar(f"{prefix}/mae_tie", mae_tie.item(), global_step=global_step)
+
+
+def train_epoch(model, optim, dataloader, device, writer, epoch, batch_size, vis_val=False):
+    """Helper function to train for one epoch"""
+    for batch_idx, batch in enumerate(dataloader):
+        image_paths, image_batch, label_batch = batch
+        image_batch, label_batch = image_batch.to(
+            device, non_blocking=True
+        ), label_batch.to(device, non_blocking=True)
+        
+        loss, loss_casing, loss_tie, mae_casing, mae_tie = get_loss(
+            image_batch, label_batch, model, image_paths, vis_val
+        )
+        
+        optim.zero_grad()
+        loss.backward()
+        optim.step()
+        
+        print(
+            f"epoch {epoch} step {batch_idx+1} / {len(dataloader)}, "
+            f"casing={loss_casing:.4f}, tie={loss_tie:.4f}, loss={loss:.4f}",
+            end="\r",
+        )
+        
+        global_step = batch_idx * batch_size + epoch * len(dataloader)
+        log_metrics(writer, "train", loss, loss_casing, loss_tie, mae_casing, mae_tie, global_step)
+    
+    print(
+        f"epoch {epoch} step {batch_idx+1} / {len(dataloader)}, "
+        f"casing={loss_casing:.4f}, tie={loss_tie:.4f}, loss={loss:.4f}"
     )
+
+
+def validate_epoch(model, dataloader, device, writer, epoch, train_dl_len, vis_val=False):
+    """Helper function to validate for one epoch"""
+    total_val_loss, total_val_casing, total_val_tie = 0.0, 0.0, 0.0
+    
+    for batch_idx, batch in tqdm.tqdm(enumerate(dataloader), desc="validating..."):
+        image_paths, image_batch, label_batch = batch
+        image_batch, label_batch = image_batch.to(
+            device, non_blocking=True
+        ), label_batch.to(device, non_blocking=True)
+        B = image_batch.shape[0]
+        
+        with torch.no_grad():
+            val_loss, val_loss_casing, val_loss_tie, val_mae_casing, val_mae_tie = get_loss(
+                image_batch, label_batch, model, image_paths, vis_val
+            )
+            total_val_loss += val_loss * B / len(dataloader.dataset)
+            total_val_casing += val_loss_casing * B / len(dataloader.dataset)
+            total_val_tie += val_loss_tie * B / len(dataloader.dataset)
+    
+    global_step = epoch * train_dl_len
+    log_metrics(writer, "val", total_val_loss, total_val_casing, total_val_tie, 
+                val_mae_casing, val_mae_tie, global_step)
+
+
+def setup_model_and_optim(n_layers, device):
+    """Helper function to setup model and optimizer"""
     model = Conv1DNet(n_layers=n_layers).to(device)
     optim = torch.optim.AdamW(model.parameters(), weight_decay=1)
-    for epoch in range(epochs):
-        for batch_idx, batch in enumerate(dl):
-            image_paths, image_batch, label_batch = batch
-            image_batch, label_batch = image_batch.to(
-                device, non_blocking=True
-            ), label_batch.to(device, non_blocking=True)
-            loss, loss_casing, loss_tie, mae_casing, mae_tie = get_loss(
-                image_batch, label_batch, model, image_paths, vis_val=False
-            )
-            optim.zero_grad()
-            loss.backward()
-            optim.step()
-            print(
-                f"epoch {epoch} step {batch_idx+1} / {len(dl)}, casing={loss_casing:.4f}, tie={loss_tie:.4f}, loss={loss:.4f}",
-                end="\r",
-            )
-            writer.add_scalar(
-                "train/total",
-                loss.item(),
-                global_step=batch_idx * batch_size + epoch * len(dl),
-            )
-            writer.add_scalar(
-                "train/casing",
-                loss_casing.item(),
-                global_step=batch_idx * batch_size + epoch * len(dl),
-            )
-            writer.add_scalar(
-                "train/tie",
-                loss_tie.item(),
-                global_step=batch_idx * batch_size + epoch * len(dl),
-            )
-            writer.add_scalar(
-                "train/mae_casing",
-                mae_casing.item(),
-                global_step=batch_idx * batch_size + epoch * len(dl),
-            )
-            writer.add_scalar(
-                "train/mae_tie",
-                mae_tie.item(),
-                global_step=batch_idx * batch_size + epoch * len(dl),
-            )
-        print(
-            f"epoch {epoch} step {batch_idx+1} / {len(dl)}, casing={loss_casing:.4f}, tie={loss_tie:.4f}, loss={loss:.4f}"
-        )
-    print("saving model...")
-    torch.save(model.state_dict(), Path(writer.log_dir) / "final_weights.pth")
-    print("Training done, model saved, great job!")
+    return model, optim
 
 
-def main_cv(tag, vis_val=False):
-    # classes are 0=background, 1=tie, 2=casing
+def main_train(
+    tag="baseline", 
+    batch_size=32, 
+    epochs=16, 
+    n_layers=4, 
+    num_workers=16, 
+    cross_validation=False,
+    vis_val=False
+):
+    """
+    Unified training function that supports both regular training and cross-validation.
+    
+    Args:
+        tag: Tag for tensorboard logging
+        batch_size: Batch size for training
+        epochs: Number of epochs (16 for regular training, 10 for CV by default)
+        n_layers: Number of layers in the model
+        num_workers: Number of workers for data loading
+        cross_validation: If True, performs cross-validation across wells
+        vis_val: If True, saves visualization images during validation
+    """
     device = torch.device("cuda:0")
-    allowed_wells = [
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-    ]  # there are 6 wells numbered from 1 to 6 inclusive, but not all have the same shape
-    for test_well in allowed_wells:
-        writer = SummaryWriter(comment="_" + tag + "_" + f"test_well_{test_well}")
-        wells = [str(w) for w in allowed_wells if w != test_well]
-        train_ds = TIEDataset(wells=wells)
-        test_ds = TIEDataset(wells=[str(test_well)])
-
-        batch_size = 32
-        dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=16)
-        test_dl = DataLoader(
-            test_ds, batch_size=batch_size, shuffle=False, num_workers=16
-        )
-        model = Conv1DNet(n_layers=4).to(device)
-        optim = torch.optim.AdamW(model.parameters(), weight_decay=1)
+    all_wells = list(range(1, 7))
+    
+    # Adjust default epochs for cross-validation if not explicitly set
+    if cross_validation and epochs == 16:
         epochs = 10
 
+    if not cross_validation:
+        # Regular training mode - train on all wells
+        writer = SummaryWriter(comment=tag)
+        wells = [str(w) for w in all_wells]
+        train_ds = TIEDataset(wells=wells)
+        dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+        model, optim = setup_model_and_optim(n_layers, device)
+        
         for epoch in range(epochs):
-            total_val_loss, total_val_casing, total_val_tie = 0.0, 0.0, 0.0
-            for batch_idx, batch in tqdm.tqdm(enumerate(test_dl), desc="validating..."):
-                image_paths, image_batch, label_batch = batch
-                image_batch, label_batch = image_batch.to(
-                    device, non_blocking=True
-                ), label_batch.to(device, non_blocking=True)
-                B = image_batch.shape[0]
-                with torch.no_grad():
-                    (
-                        val_loss,
-                        val_loss_casing,
-                        val_loss_tie,
-                        val_mae_casing,
-                        val_mae_tie,
-                    ) = get_loss(image_batch, label_batch, model, image_paths, vis_val)
-                    total_val_loss += val_loss * B / len(test_ds)
-                    total_val_casing += val_loss_casing * B / len(test_ds)
-                    total_val_tie += val_loss_tie * B / len(test_ds)
-            writer.add_scalar(
-                "val/total",
-                total_val_loss.item(),
-                global_step=epoch * len(dl),
-            )
-            writer.add_scalar(
-                "val/casing",
-                total_val_casing.item(),
-                global_step=epoch * len(dl),
-            )
-            writer.add_scalar(
-                "val/tie",
-                total_val_tie.item(),
-                global_step=epoch * len(dl),
-            )
-            writer.add_scalar(
-                "val/mae_casing", val_mae_casing.item(), global_step=epoch * len(dl)
-            )
-            writer.add_scalar(
-                "val/mae_tie", val_mae_tie.item(), global_step=epoch * len(dl)
-            )
+            train_epoch(model, optim, dl, device, writer, epoch, batch_size, vis_val=False)
+        
+        print("saving model...")
+        torch.save(model.state_dict(), Path(writer.log_dir) / "final_weights.pth")
+        print("Training done, model saved, great job!")
+    
+    else:
+        # Cross-validation mode - train on n-1 wells, validate on 1 well
+        for test_well in all_wells:
+            writer = SummaryWriter(comment="_" + tag + "_" + f"test_well_{test_well}")
+            wells = [str(w) for w in all_wells if w != test_well]
+            train_ds = TIEDataset(wells=wells)
+            test_ds = TIEDataset(wells=[str(test_well)])
 
-            for batch_idx, batch in enumerate(dl):
-                image_paths, image_batch, label_batch = batch
-                image_batch, label_batch = image_batch.to(
-                    device, non_blocking=True
-                ), label_batch.to(device, non_blocking=True)
-                loss, loss_casing, loss_tie, mae_casing, mae_tie = get_loss(
-                    image_batch, label_batch, model, image_paths, vis_val
-                )
-                optim.zero_grad()
-                loss.backward()
-                optim.step()
-                print(
-                    f"epoch {epoch} step {batch_idx+1} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}",
-                    end="\r",
-                )
-                writer.add_scalar(
-                    "train/total",
-                    loss.item(),
-                    global_step=batch_idx * batch_size + epoch * len(dl),
-                )
-                writer.add_scalar(
-                    "train/casing",
-                    loss_casing.item(),
-                    global_step=batch_idx * batch_size + epoch * len(dl),
-                )
-                writer.add_scalar(
-                    "train/tie",
-                    loss_tie.item(),
-                    global_step=batch_idx * batch_size + epoch * len(dl),
-                )
-                writer.add_scalar(
-                    "train/mae_casing",
-                    mae_casing.item(),
-                    global_step=batch_idx * batch_size + epoch * len(dl),
-                )
-                writer.add_scalar(
-                    "train/mae_tie",
-                    mae_tie.item(),
-                    global_step=batch_idx * batch_size + epoch * len(dl),
-                )
-            print(
-                f"epoch {epoch} step {batch_idx+1} / {len(dl)}, casing={loss_casing}, tie={loss_tie}, loss={loss}"
-            )
+            dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+            test_dl = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+            model, optim = setup_model_and_optim(n_layers, device)
+
+            for epoch in range(epochs):
+                # Validation phase
+                validate_epoch(model, test_dl, device, writer, epoch, len(dl), vis_val)
+                
+                # Training phase
+                train_epoch(model, optim, dl, device, writer, epoch, batch_size, vis_val)
+
+
+# Legacy wrapper functions for backward compatibility
+def main_cv(tag, vis_val=False):
+    """Legacy function - use main_train with cross_validation=True instead"""
+    main_train(tag=tag, cross_validation=True, vis_val=vis_val)
 
 
 def visualize(well, section, patch=None, split="labeled"):
@@ -471,4 +439,4 @@ if __name__ == "__main__":
     # Fire(main_train)
     # Fire(main_cv)
     # Fire(visualize)
-    Fire(inference)
+    # Fire(inference)
